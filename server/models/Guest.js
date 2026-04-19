@@ -43,6 +43,25 @@ const guestSchema = new mongoose.Schema({
         enum: ['pending', 'partial', 'paid'],
         default: 'pending',
     },
+    numberOfAdults: {
+        type: Number,
+        default: 1
+    },
+    numberOfChildren: {
+        type: Number,
+        default: 0
+    },
+    actualPrice: {
+        type: Number,
+        default: 0
+    },
+    description: String,
+    rating: {
+        type: Number,
+        min: 1,
+        max: 5,
+        default: 5
+    },
     createdAt: {
         type: Date,
         default: Date.now,

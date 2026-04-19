@@ -44,11 +44,6 @@ exports.createGuest = async (req, res, next) => {
 
         const guest = await Guest.create(guestData);
 
-        // Update room status
-        if (guest.currentRoom) {
-            await Room.findByIdAndUpdate(guest.currentRoom, { status: 'occupied' });
-        }
-
         // If paid, create income record
         if (guest.paymentStatus === 'paid' && guest.totalAmount > 0) {
             const now = new Date();
@@ -78,28 +73,32 @@ exports.updateGuest = async (req, res, next) => {
         if (!guest) return res.status(404).json({ success: false, message: 'Guest not found' });
 
         const updateData = req.body;
+        console.log('--- BACKEND UPDATE START ---');
+        console.log('ID:', req.params.id);
+        console.log('UPDATING FIELDS:', Object.keys(updateData));
 
-        // Handle additional files if uploaded
+        // Explicitly map fields to ensure they are set on the document
+        Object.keys(updateData).forEach(key => {
+            console.log(`Setting ${key} =`, updateData[key]);
+            guest[key] = updateData[key];
+        });
+
+        // Handle additional files if uploaded (multipart only)
         if (req.files && req.files.length > 0) {
             const newDocs = req.files.map(file => ({
                 url: `/uploads/${file.filename}`,
                 documentType: 'Other'
             }));
-            updateData.documents = [...(guest.documents || []), ...newDocs];
+            guest.documents = [...(guest.documents || []), ...newDocs];
         }
 
-        guest = await Guest.findByIdAndUpdate(req.params.id, updateData, {
-            new: true,
-            runValidators: true
-        });
+        // Save the document (triggers validation and schema defaults)
+        const updatedGuest = await guest.save();
 
-        // Handle Room status change if needed (checkout)
-        if (updateData.checkOut) {
-            await Room.findByIdAndUpdate(guest.currentRoom, { status: 'available' });
-        }
-
-        res.status(200).json({ success: true, data: guest });
+        console.log('SAVE SUCCESSFUL. New adults:', updatedGuest.numberOfAdults);
+        res.status(200).json({ success: true, data: updatedGuest });
     } catch (err) {
+        console.error('SAVE FAILED:', err.message);
         res.status(400).json({ success: false, message: err.message });
     }
 };
@@ -111,11 +110,6 @@ exports.deleteGuest = async (req, res, next) => {
     try {
         const guest = await Guest.findById(req.params.id);
         if (!guest) return res.status(404).json({ success: false, message: 'Guest not found' });
-
-        // Update room to available before deleting
-        if (guest.currentRoom) {
-            await Room.findByIdAndUpdate(guest.currentRoom, { status: 'available' });
-        }
 
         await guest.deleteOne();
         res.status(200).json({ success: true, data: {} });

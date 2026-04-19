@@ -83,6 +83,55 @@ exports.getUsers = async (req, res, next) => {
     }
 };
 
+// @desc    Delete user
+// @route   DELETE /api/v1/auth/users/:id
+// @access  Private/SuperAdmin
+exports.deleteUser = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.params.id);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Prevent self-deletion
+        if (user._id.toString() === req.user.id.toString()) {
+            return res.status(400).json({ success: false, message: 'You cannot delete your own account' });
+        }
+
+        await user.deleteOne();
+        res.status(200).json({ success: true, data: {} });
+    } catch (err) {
+        res.status(400).json({ success: false, message: err.message });
+    }
+};
+
+// @desc    Reset user password
+// @route   PUT /api/v1/auth/users/:id/reset-password
+// @access  Private/SuperAdmin
+exports.resetPassword = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.params.id);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        const { newPassword } = req.body;
+
+        if (!newPassword || newPassword.length < 6) {
+            return res.status(400).json({ success: false, message: 'Please provide a valid password (min 6 characters)' });
+        }
+
+        user.password = newPassword;
+        await user.save();
+
+        res.status(200).json({ success: true, message: 'Password reset successful' });
+    } catch (err) {
+        res.status(400).json({ success: false, message: err.message });
+    }
+};
+
 // Get token from model, create cookie and send response
 const sendTokenResponse = (user, statusCode, res) => {
     // Create token

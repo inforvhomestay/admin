@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import ConfirmationModal from '../components/ConfirmationModal';
 import { 
     UserPlus, 
     Shield, 
@@ -16,6 +17,9 @@ const SystemUsers = () => {
     const [users, setUsers] = useState([]);
     const [isModalOpen, setModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [isConfirmOpen, setConfirmOpen] = useState(false);
+    const [userToDelete, setUserToDelete] = useState(null);
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -29,9 +33,7 @@ const SystemUsers = () => {
 
     const fetchUsers = async () => {
         try {
-            // This endpoint needs to be added to backend or I'll just mock it if not yet there
-            // For now, I'll assume it exists or just handle the error
-            const res = await API.get('/auth/users'); // I may need to add this to auth.routes
+            const res = await API.get('/auth/users');
             setUsers(res.data.data);
         } catch (err) {
             console.error('User fetch failed');
@@ -50,6 +52,38 @@ const SystemUsers = () => {
             alert('Failed to register admin');
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const openDeleteConfirm = (user) => {
+        setUserToDelete(user);
+        setConfirmOpen(true);
+    };
+
+    const handleDelete = async () => {
+        if (!userToDelete) return;
+        setIsDeleting(true);
+        try {
+            await API.delete(`/auth/users/${userToDelete._id}`);
+            setConfirmOpen(false);
+            setUserToDelete(null);
+            fetchUsers();
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to delete user');
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    const handleResetPassword = async (id) => {
+        const newPassword = window.prompt('Enter new temporary password (min 6 chars):');
+        if (!newPassword || newPassword.length < 6) return;
+        
+        try {
+            await API.put(`/auth/users/${id}/reset-password`, { newPassword });
+            alert('Password reset successfully!');
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to reset password');
         }
     };
 
@@ -78,7 +112,7 @@ const SystemUsers = () => {
                         </div>
                     ) : (
                         users.map(u => (
-                            <div key={u._id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 relative group overflow-hidden">
+                            <div key={u._id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 relative group overflow-hidden transition-all hover:border-slate-700">
                                 <div className={`absolute top-0 right-0 p-3 rounded-bl-2xl font-black text-[10px] uppercase tracking-tighter ${u.role === 'super-admin' ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-500/10 text-blue-500'}`}>
                                     {u.role}
                                 </div>
@@ -92,10 +126,16 @@ const SystemUsers = () => {
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm font-bold transition-colors">
+                                    <button 
+                                        onClick={() => handleResetPassword(u._id)}
+                                        className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm font-bold transition-colors"
+                                    >
                                         Reset Access
                                     </button>
-                                    <button className="px-3 bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white rounded-lg transition-all">
+                                    <button 
+                                        onClick={() => openDeleteConfirm(u)}
+                                        className="px-3 bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white rounded-lg transition-all"
+                                    >
                                         <Trash2 size={18} />
                                     </button>
                                 </div>
@@ -110,76 +150,49 @@ const SystemUsers = () => {
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setModalOpen(false)}></div>
                     <div className="relative bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
-                        <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                        <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50 text-left">
                             <h3 className="text-xl font-bold text-white flex items-center gap-2">
                                 <Shield className="text-blue-500" size={24} />
                                 Add System Admin
                             </h3>
-                            <button onClick={() => setModalOpen(false)} className="text-slate-500 hover:text-white">
-                                <X size={20} />
-                            </button>
+                            <button onClick={() => setModalOpen(false)} className="text-slate-500 hover:text-white"><X size={20} /></button>
                         </div>
-                        <form onSubmit={handleSubmit} className="p-8 space-y-5">
-                            <div className="space-y-1.5 text-left">
-                                <label className="text-xs font-black text-slate-500 uppercase ml-1">Full Name</label>
-                                <div className="relative">
-                                    <UserCheck className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
-                                    <input 
-                                        required
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 pl-10 pr-4 text-white outline-none focus:ring-2 focus:ring-blue-600"
-                                        placeholder="Admin Name"
-                                        value={formData.name}
-                                        onChange={e => setFormData({...formData, name: e.target.value})}
-                                    />
-                                </div>
+                        <form onSubmit={handleSubmit} className="p-8 space-y-5 text-left">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-black text-slate-500 uppercase ml-1 block">Full Name</label>
+                                <input required className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 text-white outline-none focus:ring-2 focus:ring-blue-600" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
                             </div>
-                            <div className="space-y-1.5 text-left">
-                                <label className="text-xs font-black text-slate-500 uppercase ml-1">Email / Login</label>
-                                <div className="relative">
-                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
-                                    <input 
-                                        required
-                                        type="email"
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 pl-10 pr-4 text-white outline-none focus:ring-2 focus:ring-blue-600"
-                                        placeholder="admin@homestay.com"
-                                        value={formData.email}
-                                        onChange={e => setFormData({...formData, email: e.target.value})}
-                                    />
-                                </div>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-black text-slate-500 uppercase ml-1 block">Email</label>
+                                <input required type="email" className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 text-white outline-none" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                             </div>
-                            <div className="space-y-1.5 text-left">
-                                <label className="text-xs font-black text-slate-500 uppercase ml-1">Temporary Password</label>
-                                <div className="relative">
-                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
-                                    <input 
-                                        required
-                                        type="password"
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 pl-10 pr-4 text-white outline-none focus:ring-2 focus:ring-blue-600"
-                                        placeholder="••••••••"
-                                        value={formData.password}
-                                        onChange={e => setFormData({...formData, password: e.target.value})}
-                                    />
-                                </div>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-black text-slate-500 uppercase ml-1 block">Password</label>
+                                <input required type="password" className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 text-white outline-none" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
                             </div>
-                            <div className="space-y-1.5 text-left">
-                                <label className="text-xs font-black text-slate-500 uppercase ml-1">System Role</label>
-                                <select 
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 text-white outline-none focus:ring-2 focus:ring-blue-600"
-                                    value={formData.role}
-                                    onChange={e => setFormData({...formData, role: e.target.value})}
-                                >
-                                    <option value="admin">Standard Admin (Limited)</option>
-                                    <option value="super-admin">Super Admin (Full Access)</option>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-black text-slate-500 uppercase ml-1 block">Role</label>
+                                <select className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 text-white outline-none" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
+                                    <option value="admin">Standard Admin</option>
+                                    <option value="super-admin">Super Admin</option>
                                 </select>
                             </div>
-
                             <button type="submit" disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg mt-4 flex items-center justify-center">
-                                {isLoading ? <Loader2 className="animate-spin" size={20} /> : 'Create Administrator Account'}
+                                {isLoading ? <Loader2 className="animate-spin" size={20} /> : 'Create Account'}
                             </button>
                         </form>
                     </div>
                 </div>
             )}
+
+            <ConfirmationModal 
+                isOpen={isConfirmOpen}
+                isLoading={isDeleting}
+                onClose={() => setConfirmOpen(false)}
+                onConfirm={handleDelete}
+                title="Delete Administrator"
+                message={`Are you sure you want to remove ${userToDelete?.name} from the system? This will revoke all their access rights immediately.`}
+            />
         </Layout>
     );
 };
