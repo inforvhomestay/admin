@@ -27,7 +27,8 @@ import {
     isWithinInterval,
     parseISO,
     isBefore,
-    startOfDay
+    startOfDay,
+    subDays
 } from 'date-fns';
 import Layout from '../components/Layout';
 import API from '../api/axios';
@@ -117,20 +118,21 @@ const CalendarPage = () => {
         );
     };
 
-    const getBookingsForDay = (day) => {
+    const getOccupancyInfo = (day, roomId) => {
         const targetDay = startOfDay(day);
-        return bookings.filter(booking => {
-            const start = startOfDay(parseISO(booking.checkIn));
-            const end = booking.checkOut ? startOfDay(parseISO(booking.checkOut)) : start;
-            return isWithinInterval(targetDay, { start, end });
+        const roomBookings = bookings.filter(b => 
+            b.rooms?.some(r => (r.room?._id || r.room) === roomId)
+        );
+        
+        const arriving = roomBookings.find(b => isSameDay(targetDay, startOfDay(parseISO(b.checkIn))));
+        const departing = roomBookings.find(b => b.checkOut && isSameDay(targetDay, startOfDay(parseISO(b.checkOut))));
+        const staying = roomBookings.find(b => {
+            const start = startOfDay(parseISO(b.checkIn));
+            const end = b.checkOut ? startOfDay(parseISO(b.checkOut)) : start;
+            return targetDay >= start && targetDay < end;
         });
-    };
 
-    const getRoomBooking = (day, roomId) => {
-        const dayBookings = getBookingsForDay(day);
-        return dayBookings.find(b => {
-            return b.rooms?.some(r => (r.room?._id || r.room) === roomId);
-        });
+        return { arriving, departing, staying };
     };
 
     const isPastDate = (day) => {
@@ -189,19 +191,30 @@ const CalendarPage = () => {
                             
                             <div className="space-y-1 overflow-y-auto custom-scrollbar flex-1">
                                 {targetRooms.map(room => {
-                                    const booking = getRoomBooking(day, room._id);
-                                    if (!booking) return null;
+                                    const { arriving, departing, staying } = getOccupancyInfo(day, room._id);
                                     const colors = roomColors[room.name] || { bg: 'bg-rose-500/10', border: 'border-rose-500/20', text: 'text-rose-400', dot: 'bg-rose-500' };
                                     
+                                    if (!arriving && !departing && !staying) return null;
+
                                     return (
                                         <div 
                                             key={room._id}
-                                            className={`flex items-center gap-1.5 ${colors.bg} ${colors.border} border rounded px-1.5 py-0.5 shadow-sm`}
+                                            className={`flex items-center gap-1.5 ${colors.bg} ${colors.border} border rounded px-1.5 py-0.5 shadow-sm relative overflow-hidden`}
                                         >
                                             <div className={`w-1.5 h-1.5 rounded-sm ${colors.dot} shrink-0`} />
                                             <span className={`text-[8px] font-black uppercase ${colors.text} truncate leading-none`}>
                                                 {room.name.replace('Room ', 'R')}
                                             </span>
+                                            
+                                            {/* Indicators for Turnover */}
+                                            <div className="flex gap-0.5 ml-auto">
+                                                {departing && (
+                                                    <div className="w-1 h-1 rounded-full bg-rose-500 animate-pulse" title="Departure Today" />
+                                                )}
+                                                {arriving && (
+                                                    <div className="w-1 h-1 rounded-full bg-emerald-500" title="Arrival Today" />
+                                                )}
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -259,27 +272,26 @@ const CalendarPage = () => {
                             {['Room 1', 'Room 2', 'Room 3', 'House'].map(name => {
                                 const room = rooms.find(r => r.name === name);
                                 if (!room) return null;
-                                const existingBooking = getRoomBooking(selectedDate, room._id);
+                                
+                                const { arriving, departing, staying } = getOccupancyInfo(selectedDate, room._id);
                                 const isPast = isPastDate(selectedDate);
                                 
+                                // A room is ONLY blocked for new check-in if someone is staying the night OR arriving today
+                                const isBlockedValue = staying || arriving;
+                                
                                 return (
-                                    <button
+                                    <div
                                         key={room._id}
-                                        onClick={() => {
-                                            if (existingBooking) {
-                                                setViewingBooking(existingBooking);
-                                                setShowDetailsModal(true);
-                                                setShowRoomModal(false);
-                                            } else if (!isPast) {
-                                                handleRoomClick(room._id);
-                                            }
-                                        }}
                                         className={`
-                                            flex flex-col p-5 rounded-2xl border transition-all text-left group relative
-                                            ${existingBooking 
-                                                ? 'bg-rose-500/5 border-rose-500/20 hover:border-rose-500/50' 
+                                            flex flex-col p-5 rounded-2xl border transition-all text-left relative
+                                            ${(arriving && departing)
+                                                ? 'bg-amber-500/5 border-amber-500/20 ring-1 ring-amber-500/20' 
+                                                : isBlockedValue
+                                                ? 'bg-rose-500/5 border-rose-500/20' 
+                                                : departing
+                                                ? 'bg-emerald-500/5 border-emerald-500/20 shadow-inner'
                                                 : isPast
-                                                ? 'bg-slate-900/50 border-slate-800 opacity-50 cursor-not-allowed'
+                                                ? 'bg-slate-900/50 border-slate-800 opacity-50'
                                                 : 'bg-slate-800/30 border-slate-800 hover:border-blue-600/50 hover:bg-blue-600/5'}
                                         `}
                                     >
@@ -287,31 +299,97 @@ const CalendarPage = () => {
                                             <div className={`p-3 rounded-xl ${room.type === 'house' ? 'bg-purple-500/10 text-purple-400' : 'bg-blue-500/10 text-blue-400'}`}>
                                                 {room.type === 'house' ? <Home size={24} /> : <BedDouble size={24} />}
                                             </div>
-                                            {existingBooking ? (
-                                                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-rose-500/10 text-rose-500 border border-rose-500/20">
-                                                    <Clock size={12} /> Booked
-                                                </span>
-                                            ) : isPast ? (
-                                                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-slate-800 text-slate-500 border border-slate-800">
-                                                    <AlertCircle size={12} /> Past
-                                                </span>
-                                            ) : (
-                                                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                                                    <CheckCircle2 size={12} /> Available
-                                                </span>
+                                            
+                                            <div className="flex flex-col items-end gap-1">
+                                                {arriving && (
+                                                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                                                        <Plus size={12} /> Arriving Today
+                                                    </span>
+                                                )}
+                                                {staying && !arriving && (
+                                                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                                                        <Clock size={12} /> Occupied
+                                                    </span>
+                                                )}
+                                                {departing && (
+                                                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                                        <X size={12} className="rotate-45" /> Exiting Today
+                                                    </span>
+                                                )}
+                                                {!arriving && !staying && !departing && (
+                                                    isPast ? (
+                                                        <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-slate-800 text-slate-500 border border-slate-800">
+                                                            <AlertCircle size={12} /> Past
+                                                        </span>
+                                                    ) : (
+                                                        <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                                                            <CheckCircle2 size={12} /> Available
+                                                        </span>
+                                                    )
+                                                )}
+                                            </div>
+                                        </div>
+                                        <h4 className="text-lg font-bold text-white uppercase tracking-tight">{room.name}</h4>
+                                        
+                                        <div className="mt-2 space-y-2">
+                                            {departing && (
+                                                <button 
+                                                    onClick={() => {
+                                                        setViewingBooking(departing);
+                                                        setShowDetailsModal(true);
+                                                        setShowRoomModal(false);
+                                                    }}
+                                                    className="w-full text-left p-2 rounded-lg bg-amber-500/5 border border-amber-500/10 hover:border-amber-500/30 transition-all group/item"
+                                                >
+                                                    <p className="text-amber-500/80 text-xs font-medium flex items-center justify-between">
+                                                        <span>👋 Departure: <span className="font-bold text-amber-400">{departing.name}</span></span>
+                                                        <ChevronRight size={14} className="opacity-0 group-hover/item:opacity-100 transition-opacity" />
+                                                    </p>
+                                                </button>
+                                            )}
+                                            {(arriving || staying) && (
+                                                <button 
+                                                    onClick={() => {
+                                                        setViewingBooking(arriving || staying);
+                                                        setShowDetailsModal(true);
+                                                        setShowRoomModal(false);
+                                                    }}
+                                                    className="w-full text-left p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/10 hover:border-emerald-500/30 transition-all group/item"
+                                                >
+                                                    <p className="text-emerald-500/80 text-xs font-medium flex items-center justify-between">
+                                                        <span>🔑 {arriving ? 'Arrival' : 'Staying'}: <span className="font-bold text-emerald-400">{(arriving || staying).name}</span></span>
+                                                        <ChevronRight size={14} className="opacity-0 group-hover/item:opacity-100 transition-opacity" />
+                                                    </p>
+                                                </button>
+                                            )}
+                                            {!arriving && !staying && !departing && (
+                                                <p className="text-slate-500 text-sm mt-1">LKR {room.pricePerNight?.toLocaleString()} / night</p>
                                             )}
                                         </div>
-                                        <h4 className="text-lg font-bold text-white group-hover:text-blue-400 transition-colors">{room.name}</h4>
-                                        <p className="text-slate-500 text-sm mt-1">
-                                            {existingBooking ? `Reserved by ${existingBooking.name}` : `LKR ${room.pricePerNight?.toLocaleString()} / night`}
-                                        </p>
                                         
-                                        {existingBooking && (
-                                            <div className="mt-3 flex items-center gap-2 text-rose-400 font-bold text-[10px] uppercase">
-                                                Click to View Details <ChevronRight size={12} />
-                                            </div>
+                                        {!isBlockedValue && !isPast && (
+                                            <button 
+                                                onClick={() => handleRoomClick(room._id)}
+                                                className="mt-4 flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 transition-all w-full text-[10px] font-black uppercase"
+                                            >
+                                                <span>Click to Start New Booking</span>
+                                                <ChevronRight size={14} />
+                                            </button>
                                         )}
-                                    </button>
+                                        {isBlockedValue && !departing && (
+                                            <button 
+                                                onClick={() => {
+                                                    setViewingBooking(arriving || staying);
+                                                    setShowDetailsModal(true);
+                                                    setShowRoomModal(false);
+                                                }}
+                                                className="mt-4 flex items-center justify-between p-3 rounded-xl bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/20 transition-all w-full text-[10px] font-black uppercase"
+                                            >
+                                                <span>Click to View Details</span>
+                                                <ChevronRight size={14} />
+                                            </button>
+                                        )}
+                                    </div>
                                 );
                             })}
                         </div>
