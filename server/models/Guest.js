@@ -8,11 +8,11 @@ const guestSchema = new mongoose.Schema({
     identityType: {
         type: String,
         enum: ['NIC', 'Passport'],
-        required: true,
+        required: false,
     },
     identityNumber: {
         type: String,
-        required: true,
+        required: false,
     },
     country: {
         type: String,
@@ -20,15 +20,44 @@ const guestSchema = new mongoose.Schema({
     },
     phoneNumber: String,
     email: String,
+    birthday: Date,
+    nationality: {
+        type: String,
+        default: 'Sri Lankan'
+    },
     documents: [{
         url: String,
-        publicId: String, // Useful if using Cloudinary, or just filename for local
+        publicId: String,
         documentType: {
             type: String,
             enum: ['NIC_Front', 'NIC_Back', 'Passport_Main', 'Other'],
         }
     }],
-    currentRoom: {
+    bookingPlatform: {
+        type: String,
+        enum: ['Booking.com', 'Airbnb', 'Agoda', 'Direct Booking'],
+        default: 'Direct Booking'
+    },
+    rooms: [{
+        room: {
+            type: mongoose.Schema.ObjectId,
+            ref: 'Room',
+        },
+        roomPrice: Number,
+        guests: [{
+            name: String,
+            identityType: {
+                type: String,
+                enum: ['NIC', 'Passport'],
+            },
+            identityNumber: String,
+            birthday: Date,
+            email: String,
+            phoneNumber: String,
+            nationality: String,
+        }]
+    }],
+    currentRoom: { // Kept for legacy/single room compatibility
         type: mongoose.Schema.ObjectId,
         ref: 'Room',
     },

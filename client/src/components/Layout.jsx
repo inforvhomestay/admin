@@ -9,7 +9,8 @@ import {
     Menu, 
     X, 
     ShieldCheck,
-    UserCircle
+    UserCircle,
+    Calendar as CalendarIcon
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -66,6 +67,7 @@ const Layout = ({ children }) => {
 
                 <nav className="flex flex-col gap-2">
                     <SidebarLink to="/dashboard" icon={LayoutDashboard} label="Dashboard" onClick={() => setSidebarOpen(false)} />
+                    <SidebarLink to="/calendar" icon={CalendarIcon} label="Calendar" onClick={() => setSidebarOpen(false)} />
                     <SidebarLink to="/guests" icon={Users} label="Guests" onClick={() => setSidebarOpen(false)} />
                     <SidebarLink to="/rooms" icon={BedDouble} label="Rooms" onClick={() => setSidebarOpen(false)} />
                     <SidebarLink to="/reports" icon={FileText} label="Reports" onClick={() => setSidebarOpen(false)} />
@@ -110,8 +112,8 @@ const Layout = ({ children }) => {
                     </div>
                 </header>
 
-                <div className="flex-1 overflow-y-auto p-6">
-                    <div className="w-full">
+                <div className="flex-1 overflow-y-auto p-6 flex flex-col">
+                    <div className="w-full h-full flex flex-col">
                         {children}
                     </div>
                 </div>

@@ -8,6 +8,7 @@ import Guests from './pages/Guests';
 import Rooms from './pages/Rooms';
 import Reports from './pages/Reports';
 import SystemUsers from './pages/SystemUsers';
+import CalendarPage from './pages/Calendar';
 // Placeholder components for routes NOT YET implemented
 const Placeholder = ({ title }) => (
     <Layout>
@@ -50,6 +51,12 @@ function App() {
                     <Route path="/dashboard" element={
                         <ProtectedRoute>
                             <Dashboard />
+                        </ProtectedRoute>
+                    } />
+
+                    <Route path="/calendar" element={
+                        <ProtectedRoute>
+                            <CalendarPage />
                         </ProtectedRoute>
                     } />
 

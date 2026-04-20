@@ -7,8 +7,25 @@ const Income = require('../models/Income');
 // @access  Private
 exports.getGuests = async (req, res, next) => {
     try {
-        const guests = await Guest.find().populate('currentRoom');
-        res.status(200).json({ success: true, count: guests.length, data: guests });
+        const guests = await Guest.find().populate('currentRoom').populate('rooms.room');
+        
+        // Normalize data for frontend: move legacy currentRoom to rooms array if empty
+        const normalizedGuests = guests.map(g => {
+            const guestObj = g.toObject();
+            if ((!guestObj.rooms || guestObj.rooms.length === 0) && guestObj.currentRoom) {
+                guestObj.rooms = [{
+                    room: guestObj.currentRoom,
+                    guests: [{
+                        name: guestObj.name,
+                        identityType: guestObj.identityType,
+                        identityNumber: guestObj.identityNumber
+                    }]
+                }];
+            }
+            return guestObj;
+        });
+
+        res.status(200).json({ success: true, count: normalizedGuests.length, data: normalizedGuests });
     } catch (err) {
         res.status(400).json({ success: false, message: err.message });
     }
@@ -19,9 +36,22 @@ exports.getGuests = async (req, res, next) => {
 // @access  Private
 exports.getGuest = async (req, res, next) => {
     try {
-        const guest = await Guest.findById(req.params.id).populate('currentRoom');
+        const guest = await Guest.findById(req.params.id).populate('currentRoom').populate('rooms.room');
         if (!guest) return res.status(404).json({ success: false, message: 'Guest not found' });
-        res.status(200).json({ success: true, data: guest });
+        
+        const guestObj = guest.toObject();
+        if ((!guestObj.rooms || guestObj.rooms.length === 0) && guestObj.currentRoom) {
+            guestObj.rooms = [{
+                room: guestObj.currentRoom,
+                guests: [{
+                    name: guestObj.name,
+                    identityType: guestObj.identityType,
+                    identityNumber: guestObj.identityNumber
+                }]
+            }];
+        }
+
+        res.status(200).json({ success: true, data: guestObj });
     } catch (err) {
         res.status(400).json({ success: false, message: err.message });
     }
@@ -32,8 +62,17 @@ exports.getGuest = async (req, res, next) => {
 // @access  Private
 exports.createGuest = async (req, res, next) => {
     try {
-        const guestData = req.body;
+        let guestData = req.body;
         
+        // Handle parsing nested rooms if sent as string (from FormData)
+        if (typeof guestData.rooms === 'string') {
+            try {
+                guestData.rooms = JSON.parse(guestData.rooms);
+            } catch (e) {
+                console.error('Failed to parse rooms string');
+            }
+        }
+
         // Handle files if uploaded
         if (req.files && req.files.length > 0) {
             guestData.documents = req.files.map((file, index) => ({
@@ -47,19 +86,23 @@ exports.createGuest = async (req, res, next) => {
         // If paid, create income record
         if (guest.paymentStatus === 'paid' && guest.totalAmount > 0) {
             const now = new Date();
+            // Use the first room as the reference for income
+            const primaryRoom = guest.rooms && guest.rooms.length > 0 ? guest.rooms[0].room : guest.currentRoom;
+            
             await Income.create({
                 guest: guest._id,
-                room: guest.currentRoom,
+                room: primaryRoom,
                 amount: guest.totalAmount,
                 month: now.getMonth() + 1,
                 year: now.getFullYear(),
                 createdBy: req.user._id,
-                description: `Payment for guest ${guest.name}`
+                description: `Group payment for guest ${guest.name} (${guest.rooms?.length || 0} rooms)`
             });
         }
 
         res.status(201).json({ success: true, data: guest });
     } catch (err) {
+        console.error('Create error:', err);
         res.status(400).json({ success: false, message: err.message });
     }
 };
@@ -72,7 +115,17 @@ exports.updateGuest = async (req, res, next) => {
         let guest = await Guest.findById(req.params.id);
         if (!guest) return res.status(404).json({ success: false, message: 'Guest not found' });
 
-        const updateData = req.body;
+        let updateData = req.body;
+        
+        // Handle parsing nested rooms if sent as string (from FormData)
+        if (typeof updateData.rooms === 'string') {
+            try {
+                updateData.rooms = JSON.parse(updateData.rooms);
+            } catch (e) {
+                console.error('Failed to parse rooms string');
+            }
+        }
+
         console.log('--- BACKEND UPDATE START ---');
         console.log('ID:', req.params.id);
         console.log('UPDATING FIELDS:', Object.keys(updateData));
