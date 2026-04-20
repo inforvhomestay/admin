@@ -75,11 +75,11 @@ const CalendarPage = () => {
         return (
             <div className="flex items-center justify-between mb-8">
                 <div>
-                    <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
-                        <CalendarIcon className="text-blue-500" size={32} />
+                    <h2 className="text-xl sm:text-3xl font-bold text-white tracking-tight flex items-center gap-2 sm:gap-3">
+                        <CalendarIcon className="text-blue-500 w-6 h-6 sm:w-8 sm:h-8" />
                         {format(currentMonth, 'MMMM yyyy')}
                     </h2>
-                    <p className="text-slate-500 mt-1">Manage occupancy and group reservations.</p>
+                    <p className="text-slate-500 text-[10px] sm:text-sm mt-0.5 sm:mt-1">Manage occupancy and reservations.</p>
                 </div>
                 <div className="flex gap-2 bg-slate-900/50 p-1 rounded-xl border border-slate-800">
                     <button 
@@ -106,12 +106,13 @@ const CalendarPage = () => {
     };
 
     const renderDays = () => {
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         return (
             <div className="grid grid-cols-7 w-full mb-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
                 {days.map((day, i) => (
-                    <div key={i} className="text-center text-xs font-black text-slate-600 uppercase tracking-widest py-3">
-                        {day}
+                    <div key={i} className="text-center py-2 sm:py-3">
+                        <span className="hidden sm:inline text-[10px] font-black text-slate-600 uppercase tracking-widest">{day.slice(0, 3)}</span>
+                        <span className="sm:hidden text-[10px] font-black text-slate-600 uppercase tracking-widest">{day[0]}</span>
                     </div>
                 ))}
             </div>
@@ -199,20 +200,20 @@ const CalendarPage = () => {
                                     return (
                                         <div 
                                             key={room._id}
-                                            className={`flex items-center gap-1.5 ${colors.bg} ${colors.border} border rounded px-1.5 py-0.5 shadow-sm relative overflow-hidden`}
+                                            className={`flex items-center gap-1 sm:gap-1.5 ${colors.bg} ${colors.border} border rounded px-1 sm:px-1.5 py-0.5 shadow-sm relative overflow-hidden h-3 sm:h-auto`}
                                         >
-                                            <div className={`w-1.5 h-1.5 rounded-sm ${colors.dot} shrink-0`} />
-                                            <span className={`text-[8px] font-black uppercase ${colors.text} truncate leading-none`}>
+                                            <div className={`w-1 sm:w-1.5 h-1 sm:h-1.5 rounded-full sm:rounded-sm ${colors.dot} shrink-0`} />
+                                            <span className={`hidden sm:inline text-[8px] font-black uppercase ${colors.text} truncate leading-none`}>
                                                 {room.name.replace('Room ', 'R')}
                                             </span>
                                             
                                             {/* Indicators for Turnover */}
-                                            <div className="flex gap-0.5 ml-auto">
+                                            <div className="flex gap-0.5 ml-auto sm:ml-0">
                                                 {departing && (
-                                                    <div className="w-1 h-1 rounded-full bg-rose-500 animate-pulse" title="Departure Today" />
+                                                    <div className="w-1 h-1 rounded-full bg-rose-500 animate-pulse sm:hidden" title="Departure Today" />
                                                 )}
                                                 {arriving && (
-                                                    <div className="w-1 h-1 rounded-full bg-emerald-500" title="Arrival Today" />
+                                                    <div className="w-1 h-1 rounded-full bg-emerald-500 sm:hidden" title="Arrival Today" />
                                                 )}
                                             </div>
                                         </div>
@@ -255,20 +256,20 @@ const CalendarPage = () => {
 
             {/* Room Selection Modal */}
             {showRoomModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setShowRoomModal(false)}></div>
-                    <div className="relative bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                    <div className="relative bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom sm:zoom-in duration-300 sm:duration-200">
+                        <div className="p-4 sm:p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
                             <div>
-                                <h3 className="text-xl font-bold text-white">Select Room for Booking</h3>
-                                <p className="text-sm text-slate-500">{format(selectedDate, 'EEEE, MMMM do yyyy')}</p>
+                                <h3 className="text-lg sm:text-xl font-bold text-white uppercase tracking-tight">Select Room</h3>
+                                <p className="text-[10px] sm:text-sm text-slate-500">{format(selectedDate, 'EEEE, MMMM do yyyy')}</p>
                             </div>
-                            <button onClick={() => setShowRoomModal(false)} className="text-slate-500 hover:text-white transition-colors">
+                            <button onClick={() => setShowRoomModal(false)} className="text-slate-500 hover:text-white transition-colors p-2">
                                 <X size={24} />
                             </button>
                         </div>
                         
-                        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
                             {['Room 1', 'Room 2', 'Room 3', 'House'].map(name => {
                                 const room = rooms.find(r => r.name === name);
                                 if (!room) return null;
@@ -416,62 +417,63 @@ const CalendarPage = () => {
 
             {/* Booking Details Modal */}
             {showDetailsModal && viewingBooking && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setShowDetailsModal(false)}></div>
-                    <div className="relative bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
-                            <div className="flex items-center gap-4">
+                    <div className="relative bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom sm:zoom-in duration-300 sm:duration-200">
+                        <div className="p-4 sm:p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                            <div className="flex items-center gap-3 sm:gap-4">
                                 <button 
                                     onClick={() => {
                                         setShowDetailsModal(false);
                                         setShowRoomModal(true);
                                     }}
-                                    className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-all border border-slate-800"
+                                    className="p-1.5 sm:p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-all border border-slate-800"
                                     title="Back to Room Selection"
                                 >
                                     <ChevronLeft size={20} />
                                 </button>
                                 <div>
-                                    <h3 className="text-xl font-bold text-white">Booking Details</h3>
-                                    <p className="text-sm text-slate-500">Scheduled Reservation</p>
+                                    <h3 className="text-lg sm:text-xl font-bold text-white uppercase tracking-tight">Details</h3>
+                                    <p className="text-[10px] sm:text-sm text-slate-500">Scheduled Reservation</p>
                                 </div>
                             </div>
-                            <button onClick={() => setShowDetailsModal(false)} className="text-slate-500 hover:text-white transition-colors">
+                            <button onClick={() => setShowDetailsModal(false)} className="text-slate-500 hover:text-white transition-colors p-2">
                                 <X size={24} />
                             </button>
                         </div>
                         
-                        <div className="p-8 space-y-6">
-                            <div className="flex items-center gap-4">
-                                <div className="w-16 h-16 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500 border border-blue-500/20">
-                                    <Users size={32} />
+                        <div className="p-4 sm:p-8 space-y-4 sm:space-y-6 max-h-[85vh] overflow-y-auto custom-scrollbar">
+                            <div className="flex items-center gap-3 sm:gap-4 bg-slate-950/30 p-3 sm:p-0 rounded-2xl border border-slate-800 sm:border-none">
+                                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500 border border-blue-500/20 shrink-0">
+                                    <Users size={28} className="sm:hidden" />
+                                    <Users size={32} className="hidden sm:block" />
                                 </div>
-                                <div className="flex-1">
-                                    <h4 className="text-2xl font-bold text-white leading-tight">{viewingBooking.name}</h4>
-                                    <div className="flex gap-2 mt-1">
-                                        <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] font-black uppercase border border-blue-500/20">
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="text-xl sm:text-2xl font-bold text-white leading-tight truncate">{viewingBooking.name}</h4>
+                                    <div className="flex flex-wrap gap-1.5 mt-1">
+                                        <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[8px] sm:text-[10px] font-black uppercase border border-blue-500/20">
                                             {viewingBooking.bookingPlatform}
                                         </span>
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
+                                        <span className={`px-2 py-0.5 rounded text-[8px] sm:text-[10px] font-black uppercase border ${
                                             viewingBooking.paymentStatus === 'paid' 
                                             ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
                                             : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                                         }`}>
-                                            Payment: {viewingBooking.paymentStatus}
+                                            {viewingBooking.paymentStatus}
                                         </span>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-slate-950/30 p-4 rounded-2xl border border-slate-800/50">
+                            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                                <div className="bg-slate-950/30 p-3 sm:p-4 rounded-2xl border border-slate-800/50">
                                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Check-in</p>
-                                    <p className="text-lg font-bold text-white">{format(parseISO(viewingBooking.checkIn), 'MMM dd, yyyy')}</p>
+                                    <p className="text-sm sm:text-lg font-bold text-white">{format(parseISO(viewingBooking.checkIn), 'MMM dd')}</p>
                                 </div>
-                                <div className="bg-slate-950/30 p-4 rounded-2xl border border-slate-800/50">
+                                <div className="bg-slate-950/30 p-3 sm:p-4 rounded-2xl border border-slate-800/50">
                                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Check-out</p>
-                                    <p className="text-lg font-bold text-white">
-                                        {viewingBooking.checkOut ? format(parseISO(viewingBooking.checkOut), 'MMM dd, yyyy') : 'Not Set'}
+                                    <p className="text-sm sm:text-lg font-bold text-white">
+                                        {viewingBooking.checkOut ? format(parseISO(viewingBooking.checkOut), 'MMM dd') : '—'}
                                     </p>
                                 </div>
                             </div>
