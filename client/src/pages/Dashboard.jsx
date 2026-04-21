@@ -17,9 +17,20 @@ import {
     CartesianGrid, 
     Tooltip, 
     ResponsiveContainer,
-    BarChart,
-    Bar
 } from 'recharts';
+import { 
+    format, 
+    subMonths, 
+    startOfMonth, 
+    endOfMonth, 
+    parseISO, 
+    isWithinInterval, 
+    differenceInDays,
+    startOfDay,
+    isAfter,
+    isBefore,
+    isSameMonth
+} from 'date-fns';
 import API from '../api/axios';
 
 const StatCard = ({ title, value, icon: Icon, color, trend }) => (
@@ -43,37 +54,118 @@ const Dashboard = () => {
     const [stats, setStats] = useState({
         totalGuests: 0,
         occupiedRooms: 0,
+        totalRooms: 0,
         monthlyIncome: 0,
+        averageStay: 0,
         activeBookings: 0
     });
-
-    const incomeData = [
-        { name: 'Jan', amount: 45000 },
-        { name: 'Feb', amount: 52000 },
-        { name: 'Mar', amount: 48000 },
-        { name: 'Apr', amount: 61000 },
-        { name: 'May', amount: 55000 },
-        { name: 'Jun', amount: 67000 },
-    ];
+    const [incomeData, setIncomeData] = useState([]);
+    const [roomStats, setRoomStats] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                const roomRes = await API.get('/rooms');
-                const guestRes = await API.get('/guests');
+                setLoading(true);
+                const [roomRes, guestRes] = await Promise.all([
+                    API.get('/rooms'),
+                    API.get('/guests')
+                ]);
                 
-                const occupiedCount = roomRes.data.data.filter(r => r.status === 'occupied').length;
-                const totalRooms = roomRes.data.data.length;
+                const allRooms = roomRes.data.data;
+                const allGuests = guestRes.data.data;
+                const today = startOfDay(new Date());
+
+                // 1. Calculate Active Guests (currently checked in)
+                const activeGuests = allGuests.filter(g => {
+                    const start = startOfDay(parseISO(g.checkIn));
+                    const end = g.checkOut ? startOfDay(parseISO(g.checkOut)) : start;
+                    return today >= start && today < end;
+                }).length;
+
+                // 2. Calculate Occupied Rooms (based on current guest placements)
+                const occupiedRoomIds = new Set();
+                allGuests.forEach(guest => {
+                    const start = startOfDay(parseISO(guest.checkIn));
+                    const end = guest.checkOut ? startOfDay(parseISO(guest.checkOut)) : start;
+                    if (today >= start && today < end) {
+                        guest.rooms?.forEach(r => {
+                            const roomId = r.room?._id || r.room;
+                            if (roomId) occupiedRoomIds.add(roomId.toString());
+                        });
+                    }
+                });
+                const occupiedCount = occupiedRoomIds.size;
+
+                // 3. Calculate Monthly Revenue Growth (Last 6 months)
+                const last6Months = Array.from({ length: 6 }, (_, i) => {
+                    const date = subMonths(new Date(), 5 - i);
+                    return {
+                        name: format(date, 'MMM'),
+                        monthStart: startOfMonth(date),
+                        monthEnd: endOfMonth(date),
+                        amount: 0
+                    };
+                });
+
+                allGuests.forEach(guest => {
+                    const checkInDate = parseISO(guest.checkIn);
+                    last6Months.forEach(month => {
+                        if (isSameMonth(checkInDate, month.monthStart)) {
+                            month.amount += (guest.totalAmount || 0);
+                        }
+                    });
+                });
+
+                // 4. Calculate Average Stay
+                const previousGuests = allGuests.filter(g => g.checkOut && isBefore(parseISO(g.checkOut), today));
+                const totalStayDays = previousGuests.reduce((acc, g) => {
+                    return acc + Math.max(1, differenceInDays(parseISO(g.checkOut), parseISO(g.checkIn)));
+                }, 0);
+                const averageStay = previousGuests.length > 0 ? (totalStayDays / previousGuests.length).toFixed(1) : 0;
+
+                // 5. Room Occupancy % (Last 30 days)
+                const thirtyDaysAgo = subMonths(today, 1);
+                const occupancyStats = allRooms.map(room => {
+                    let occupiedDays = 0;
+                    allGuests.forEach(guest => {
+                        if (guest.rooms?.some(r => (r.room?._id || r.room) === room._id)) {
+                            const start = parseISO(guest.checkIn);
+                            const end = guest.checkOut ? parseISO(guest.checkOut) : start;
+                            
+                            // Overlap between [thirtyDaysAgo, today] and [start, end]
+                            const overlapStart = isAfter(start, thirtyDaysAgo) ? start : thirtyDaysAgo;
+                            const overlapEnd = isBefore(end, today) ? end : today;
+                            
+                            if (isBefore(overlapStart, overlapEnd)) {
+                                occupiedDays += differenceInDays(overlapEnd, overlapStart);
+                            }
+                        }
+                    });
+                    const percentage = Math.round((occupiedDays / 30) * 100);
+                    return { 
+                        name: room.name, 
+                        level: Math.min(100, percentage), 
+                        status: percentage > 80 ? 'Full' : percentage > 30 ? 'Active' : 'Available' 
+                    };
+                });
 
                 setStats({
-                    totalGuests: guestRes.data.count,
+                    totalGuests: activeGuests,
                     occupiedRooms: occupiedCount,
-                    totalRooms: totalRooms,
-                    monthlyIncome: 125400, // Hardcoded for demo
-                    activeBookings: occupiedCount
+                    totalRooms: allRooms.length,
+                    monthlyIncome: last6Months[5].amount,
+                    averageStay: averageStay,
+                    activeBookings: activeGuests
                 });
+                
+                setIncomeData(last6Months);
+                setRoomStats(occupancyStats);
+
             } catch (err) {
-                console.error('Failed to fetch stats');
+                console.error('Failed to fetch stats', err);
+            } finally {
+                setLoading(false);
             }
         };
         fetchStats();
@@ -100,28 +192,26 @@ const Dashboard = () => {
                 {/* Stats Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     <StatCard 
-                        title="Total Active Guests" 
+                        title="Today's Guests" 
                         value={stats.totalGuests} 
                         icon={Users} 
                         color="blue" 
-                        trend={12} 
                     />
                     <StatCard 
                         title="Room Occupancy" 
-                        value={`${stats.occupiedRooms}/${stats.totalRooms || 4}`} 
+                        value={`${stats.occupiedRooms}/${stats.totalRooms || 0}`} 
                         icon={BedDouble} 
                         color="emerald" 
                     />
                     <StatCard 
-                        title="Monthly Revenue" 
-                        value={`LKR ${stats.monthlyIncome.toLocaleString()}`} 
+                        title="Revenue (Month)" 
+                        value={`LKR ${stats.monthlyIncome?.toLocaleString()}`} 
                         icon={DollarSign} 
                         color="amber" 
-                        trend={8} 
                     />
                     <StatCard 
                         title="Average Stay" 
-                        value="3.2 Days" 
+                        value={`${stats.averageStay} Days`} 
                         icon={TrendingUp} 
                         color="purple" 
                     />
@@ -159,22 +249,28 @@ const Dashboard = () => {
                     </div>
 
                     <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
-                        <h3 className="font-bold text-white mb-6">Occupancy by Room</h3>
+                        <h3 className="font-bold text-white mb-6">Occupancy by Room (30d)</h3>
                         <div className="space-y-6">
-                            {[
-                                { name: 'Room 01', level: 90, status: 'Full' },
-                                { name: 'Room 02', level: 65, status: 'Active' },
-                                { name: 'Room 03', level: 82, status: 'Active' },
-                                { name: 'Private House', level: 45, status: 'Available' },
-                            ].map((room) => (
+                            {roomStats.map((room) => (
                                 <div key={room.name}>
                                     <div className="flex justify-between text-sm mb-2">
                                         <span className="text-white font-medium">{room.name}</span>
-                                        <span className="text-slate-400">{room.level}%</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-[10px] uppercase font-black px-1.5 py-0.5 rounded ${
+                                                room.status === 'Full' ? 'bg-rose-500/10 text-rose-500' : 
+                                                room.status === 'Active' ? 'bg-blue-500/10 text-blue-500' : 
+                                                'bg-emerald-500/10 text-emerald-500'
+                                            }`}>
+                                                {room.status}
+                                            </span>
+                                            <span className="text-slate-400">{room.level}%</span>
+                                        </div>
                                     </div>
                                     <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                                         <div 
-                                            className="h-full bg-blue-600 rounded-full" 
+                                            className={`h-full rounded-full transition-all duration-1000 ${
+                                                room.level > 80 ? 'bg-rose-500' : room.level > 40 ? 'bg-blue-500' : 'bg-emerald-500'
+                                            }`} 
                                             style={{ width: `${room.level}%` }}
                                         ></div>
                                     </div>

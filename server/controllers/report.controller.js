@@ -1,5 +1,15 @@
 const Income = require('../models/Income');
+const Guest = require('../models/Guest');
 const PDFDocument = require('pdfkit');
+
+// Helper for dates in descriptions
+const formatDate = (date) => {
+    try {
+        return date ? new Date(date).toLocaleDateString() : 'N/A';
+    } catch (e) {
+        return 'N/A';
+    }
+};
 
 // @desc    Get monthly summary
 // @route   GET /api/v1/reports/summary
@@ -12,32 +22,58 @@ exports.getMonthlySummary = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Please provide month and year' });
         }
 
-        const stats = await Income.aggregate([
-            {
-                $match: {
-                    month: parseInt(month),
-                    year: parseInt(year)
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    totalIncome: { $sum: '$amount' },
-                    count: { $sum: 1 }
-                }
-            }
-        ]);
+        const m = parseInt(month);
+        const y = parseInt(year);
 
-        const transactions = await Income.find({
-            month: parseInt(month),
-            year: parseInt(year)
-        }).populate('guest room');
+        // 1. Get Manual Income Records
+        const manualIncome = await Income.find({ month: m, year: y }).populate('guest room');
+
+        // 2. Get Paid Guest Records (Stay Revenue)
+        const startDate = new Date(y, m - 1, 1);
+        const endDate = new Date(y, m, 0, 23, 59, 59);
+
+        const guestRevenue = await Guest.find({
+            paymentStatus: 'paid',
+            checkIn: { $gte: startDate, $lte: endDate }
+        }).populate('rooms.room currentRoom');
+
+        console.log(`Found ${manualIncome.length} manual records and ${guestRevenue.length} guests for ${m}/${y}`);
+
+        // Normalize Guests to transaction-like objects
+        const guestTransactions = guestRevenue.map(g => ({
+            _id: g._id,
+            date: g.checkIn,
+            guest: { name: g.name },
+            room: { name: g.rooms && g.rooms.length > 0 ? (g.rooms[0].room?.name || 'Multiple') : (g.currentRoom?.name || 'N/A') },
+            amount: g.totalAmount || 0,
+            description: `Stay: ${g.name} (${formatDate(g.checkIn)} - ${g.checkOut ? formatDate(g.checkOut) : '??'})`,
+            source: 'stay'
+        }));
+
+        // Merge and summarize
+        const allTransactions = [
+            ...manualIncome.map(t => ({
+                _id: t._id,
+                date: t.date,
+                guest: t.guest,
+                room: t.room,
+                amount: t.amount,
+                description: t.description,
+                source: 'manual'
+            })),
+            ...guestTransactions
+        ].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        const totalIncome = allTransactions.reduce((acc, curr) => acc + curr.amount, 0);
 
         res.status(200).json({
             success: true,
             data: {
-                summary: stats[0] || { totalIncome: 0, count: 0 },
-                transactions
+                summary: {
+                    totalIncome,
+                    count: allTransactions.length
+                },
+                transactions: allTransactions
             }
         });
     } catch (err) {
@@ -56,10 +92,34 @@ exports.downloadMonthlyPDF = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Please provide month and year' });
         }
 
-        const transactions = await Income.find({
-            month: parseInt(month),
-            year: parseInt(year)
-        }).populate('guest room');
+        const m = parseInt(month);
+        const y = parseInt(year);
+
+        // Fetch and Merge logic (Same as summary)
+        const manualIncome = await Income.find({ month: m, year: y }).populate('guest room');
+        const startDate = new Date(y, m - 1, 1);
+        const endDate = new Date(y, m, 0, 23, 59, 59);
+        const guestRevenue = await Guest.find({
+            paymentStatus: 'paid',
+            checkIn: { $gte: startDate, $lte: endDate }
+        }).populate('rooms.room currentRoom');
+
+        const transactions = [
+            ...manualIncome.map(t => ({
+                date: t.date,
+                guestName: t.guest?.name || 'N/A',
+                roomName: t.room?.name || 'N/A',
+                amount: t.amount,
+                description: t.description || 'Manual Entry'
+            })),
+            ...guestRevenue.map(g => ({
+                date: g.checkIn,
+                guestName: g.name,
+                roomName: g.rooms && g.rooms.length > 0 ? (g.rooms[0].room?.name || 'Multiple') : (g.currentRoom?.name || 'N/A'),
+                amount: g.totalAmount || 0,
+                description: `Stay Reservation Record`
+            }))
+        ].sort((a, b) => new Date(a.date) - new Date(b.date));
 
         const total = transactions.reduce((acc, curr) => acc + curr.amount, 0);
 
@@ -86,17 +146,17 @@ exports.downloadMonthlyPDF = async (req, res, next) => {
 
         doc.moveTo(50, 215).lineTo(550, 215).stroke();
 
-        let y = 230;
+        let y_pos = 230;
         transactions.forEach((t) => {
-            doc.text(new Date(t.date).toLocaleDateString(), 50, y);
-            doc.text(t.guest?.name || 'N/A', 120, y);
-            doc.text(t.room?.name || 'N/A', 250, y);
-            doc.text(t.description || '', 350, y, { width: 140 });
-            doc.text(`LKR ${t.amount.toLocaleString()}`, 500, y);
-            y += 20;
-            if (y > 700) {
+            doc.text(new Date(t.date).toLocaleDateString(), 50, y_pos);
+            doc.text(t.guestName, 120, y_pos);
+            doc.text(t.roomName, 250, y_pos);
+            doc.text(t.description, 350, y_pos, { width: 140 });
+            doc.text(`LKR ${t.amount.toLocaleString()}`, 500, y_pos);
+            y_pos += 20;
+            if (y_pos > 700) {
                 doc.addPage();
-                y = 50;
+                y_pos = 50;
             }
         });
 

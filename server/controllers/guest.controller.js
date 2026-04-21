@@ -148,6 +148,37 @@ exports.updateGuest = async (req, res, next) => {
         // Save the document (triggers validation and schema defaults)
         const updatedGuest = await guest.save();
 
+        // Financial Synchronization Logic
+        if (updatedGuest.paymentStatus === 'paid' && updatedGuest.totalAmount > 0) {
+            const now = new Date();
+            const primaryRoom = updatedGuest.rooms && updatedGuest.rooms.length > 0 ? updatedGuest.rooms[0].room : updatedGuest.currentRoom;
+            
+            // Check if income record exists
+            const existingIncome = await Income.findOne({ guest: updatedGuest._id });
+            
+            if (existingIncome) {
+                // Update existing record
+                existingIncome.amount = updatedGuest.totalAmount;
+                existingIncome.room = primaryRoom;
+                await existingIncome.save();
+            } else {
+                // Create new record
+                await Income.create({
+                    guest: updatedGuest._id,
+                    room: primaryRoom,
+                    amount: updatedGuest.totalAmount,
+                    month: now.getMonth() + 1,
+                    year: now.getFullYear(),
+                    createdBy: req.user._id,
+                    description: `Automated payment record for ${updatedGuest.name}`
+                });
+            }
+        } else if (updatedGuest.paymentStatus !== 'paid') {
+            // Optional: Remove income record if guest is unmarked as paid? 
+            // Better to keep it for auditing or just ignore. 
+            // For now, let's just make sure 'paid' records are accurate.
+        }
+
         console.log('SAVE SUCCESSFUL. New adults:', updatedGuest.numberOfAdults);
         res.status(200).json({ success: true, data: updatedGuest });
     } catch (err) {
